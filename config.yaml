@@ -1,0 +1,7 @@
+project:
+  name: cloud-infrastructure-auditor
+  environment: development
+
+reporting:
+  format: console
+  enabled: true
