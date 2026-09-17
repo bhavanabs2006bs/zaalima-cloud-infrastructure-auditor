@@ -1,13 +1,17 @@
 import boto3
 
-try:
-    session = boto3.Session(profile_name="default")
-    sts = session.client("sts")
-    identity = sts.get_caller_identity()
+ROLE_ARN = "arn:aws:iam::123456789012:role/TestRole"
 
-    print("Authentication Successful")
-    print("Account:", identity["Account"])
+try:
+    sts = boto3.client("sts")
+
+    response = sts.assume_role(
+        RoleArn=ROLE_ARN,
+        RoleSessionName="CloudAuditorSession"
+    )
+
+    print("Role assumed successfully")
 
 except Exception as e:
-    print("Authentication Failed")
+    print("Role assumption failed")
     print(e)
