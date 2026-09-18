@@ -1,2 +1,5 @@
 rich
 PyYAML
+pytest
+moto
+boto3

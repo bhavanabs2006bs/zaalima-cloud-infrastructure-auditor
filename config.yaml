@@ -5,3 +5,4 @@ project:
 reporting:
   format: console
   enabled: true
+  
