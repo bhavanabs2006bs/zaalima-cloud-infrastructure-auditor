@@ -1,17 +1,23 @@
 import boto3
+
 from moto import mock_aws
+
+from auditor.aws_discovery import get_ec2_instances
 
 
 @mock_aws
-def test_s3_mock_scaffolding():
-    """Verify that moto can mock an AWS S3 service."""
-    s3 = boto3.client("s3", region_name="us-east-1")
+def test_get_ec2_instances():
+    ec2 = boto3.client("ec2", region_name="us-east-1")
 
-    bucket_name = "test-auditor-bucket"
-    s3.create_bucket(Bucket=bucket_name)
+    ec2.run_instances(
+        ImageId="ami-12345678",
+        MinCount=1,
+        MaxCount=1,
+        InstanceType="t2.micro",
+    )
 
-    response = s3.list_buckets()
+    instances = get_ec2_instances("us-east-1")
 
-    bucket_names = [bucket["Name"] for bucket in response["Buckets"]]
-
-    assert bucket_name in bucket_names
+    assert len(instances) == 1
+    assert instances[0]["instance_type"] == "t2.micro"
+    assert instances[0]["state"] == "running"
