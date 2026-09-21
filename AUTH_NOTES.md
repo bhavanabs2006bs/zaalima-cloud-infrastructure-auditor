@@ -1,13 +1,12 @@
-## IAM Role Assumption Testing
+## Credential Validation & Error Handling
 
-IAM Role Assumption allows temporary access to AWS resources without using permanent credentials.
+Implemented validation for common authentication issues:
 
-Implementation:
-- Used STS AssumeRole API
-- Created sample role ARN for testing
+- Missing AWS profile
+- Missing AWS credentials
+- Unexpected authentication errors
 
-Result:
-Role assumption could not be fully tested because no AWS account/role was available.
-
-Next Step:
-Test with a valid IAM role in a configured AWS environment.
+Benefits:
+- Clearer troubleshooting
+- Better user experience
+- Easier debugging

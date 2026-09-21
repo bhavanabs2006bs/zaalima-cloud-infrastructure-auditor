@@ -1,17 +1,20 @@
 import boto3
-
-ROLE_ARN = "arn:aws:iam::123456789012:role/TestRole"
+from botocore.exceptions import NoCredentialsError, ProfileNotFound
 
 try:
-    sts = boto3.client("sts")
+    session = boto3.Session(profile_name="default")
+    sts = session.client("sts")
+    identity = sts.get_caller_identity()
 
-    response = sts.assume_role(
-        RoleArn=ROLE_ARN,
-        RoleSessionName="CloudAuditorSession"
-    )
+    print("Authentication Successful")
+    print("Account:", identity["Account"])
 
-    print("Role assumed successfully")
+except ProfileNotFound:
+    print("Error: AWS profile 'default' was not found.")
+
+except NoCredentialsError:
+    print("Error: AWS credentials not configured.")
 
 except Exception as e:
-    print("Role assumption failed")
-    print(e)
+    print("Authentication Failed")
+    print(f"Unexpected error: {e}")
