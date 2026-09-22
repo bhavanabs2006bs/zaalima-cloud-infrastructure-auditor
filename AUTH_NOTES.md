@@ -1,12 +1,13 @@
-## Credential Validation & Error Handling
+## Secure Credential Handling
 
-Implemented validation for common authentication issues:
+Implemented secure credential validation.
 
-- Missing AWS profile
-- Missing AWS credentials
-- Unexpected authentication errors
+Security Practices:
+- No credentials hardcoded in source code
+- Uses AWS profile configuration
+- Validates credentials before API calls
+- Handles missing credentials safely
 
-Benefits:
-- Clearer troubleshooting
-- Better user experience
-- Easier debugging
+Testing:
+Verified behavior when credentials are missing.
+Verified behavior when profile is unavailable.

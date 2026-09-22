@@ -1,0 +1,16 @@
+## Secure Credential Handling
+
+Implemented exception handling for:
+
+- Missing AWS profile
+- Missing AWS credentials
+- Unexpected authentication errors
+
+Current Test Result:
+AWS profile 'default' not found.
+
+Status:
+Profile-not-found handling was verified successfully.
+
+Future Testing:
+Verify missing credentials and other error scenarios when AWS credentials are available.
