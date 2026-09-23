@@ -1,28 +1,22 @@
 import boto3
-from botocore.exceptions import NoCredentialsError, ProfileNotFound
+import time
 
-try:
-    session = boto3.Session(profile_name="default")
+MAX_RETRIES = 3
 
-    credentials = session.get_credentials()
+for attempt in range(MAX_RETRIES):
+    try:
+        sts = boto3.client("sts")
+        response = sts.get_caller_identity()
 
-    if credentials is None:
-        raise NoCredentialsError()
+        print("Success")
+        print(response["Account"])
+        break
 
-    print("Credentials found")
+    except Exception as e:
+        print(f"Attempt {attempt + 1} failed")
 
-    sts = session.client("sts")
-    identity = sts.get_caller_identity()
-
-    print("Authentication Successful")
-    print("Account:", identity["Account"])
-
-except ProfileNotFound:
-    print("Error: AWS profile 'default' not found.")
-
-except NoCredentialsError:
-    print("Error: No AWS credentials configured.")
-
-except Exception as e:
-    print("Authentication Failed")
-    print(e)
+        if attempt < MAX_RETRIES - 1:
+            time.sleep(2)
+        else:
+            print("Maximum retries reached")
+            print(e)

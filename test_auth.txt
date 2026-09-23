@@ -1,16 +1,13 @@
-## Secure Credential Handling
+Authentication Test Results
 
-Implemented exception handling for:
+Current Status:
+Retry/backoff logic added to the code.
 
-- Missing AWS profile
-- Missing AWS credentials
-- Unexpected authentication errors
+Testing Status:
+Not tested with actual AWS API calls.
 
-Current Test Result:
-AWS profile 'default' not found.
-
-Status:
-Profile-not-found handling was verified successfully.
+Reason:
+AWS credentials and AWS environment are not available.
 
 Future Testing:
-Verify missing credentials and other error scenarios when AWS credentials are available.
+Verify retry behavior when AWS access is available.

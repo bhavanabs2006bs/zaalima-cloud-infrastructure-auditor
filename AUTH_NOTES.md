@@ -1,13 +1,14 @@
-## Secure Credential Handling
+## API Rate-Limit Handling
 
-Implemented secure credential validation.
+Implemented basic retry and backoff logic.
 
-Security Practices:
-- No credentials hardcoded in source code
-- Uses AWS profile configuration
-- Validates credentials before API calls
-- Handles missing credentials safely
+Approach:
+- Retry failed API calls up to 3 times.
+- Wait 2 seconds before retrying.
+- Stop after maximum retry attempts.
 
-Testing:
-Verified behavior when credentials are missing.
-Verified behavior when profile is unavailable.
+Purpose:
+AWS APIs may temporarily reject requests due to throttling or rate limits.
+
+Future Improvement:
+Implement exponential backoff using retry libraries.
