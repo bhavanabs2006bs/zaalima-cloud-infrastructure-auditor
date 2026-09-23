@@ -18,3 +18,18 @@ def get_ec2_instances(region="us-east-1"):
             })
 
     return instances
+def get_s3_buckets(region="us-east-1"):
+    """Return S3 bucket information from AWS."""
+    s3 = boto3.client("s3", region_name=region)
+
+    response = s3.list_buckets()
+
+    buckets = []
+
+    for bucket in response["Buckets"]:
+        buckets.append({
+            "name": bucket["Name"],
+            "creation_date": bucket["CreationDate"],
+        })
+
+    return buckets
