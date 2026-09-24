@@ -1,3 +1,4 @@
+from aws_client_factory import get_client
 import boto3
 import time
 
@@ -5,7 +6,7 @@ MAX_RETRIES = 3
 
 for attempt in range(MAX_RETRIES):
     try:
-        sts = boto3.client("sts")
+        sts = get_client("sts")
         response = sts.get_caller_identity()
 
         print("Success")

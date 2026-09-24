@@ -1,14 +1,14 @@
-## API Rate-Limit Handling
+## AWS Client Factory Utility
 
-Implemented basic retry and backoff logic.
-
-Approach:
-- Retry failed API calls up to 3 times.
-- Wait 2 seconds before retrying.
-- Stop after maximum retry attempts.
+Implemented a reusable client factory for AWS services.
 
 Purpose:
-AWS APIs may temporarily reject requests due to throttling or rate limits.
+- Centralize AWS client creation.
+- Reduce duplicate code.
+- Simplify future service integrations.
 
-Future Improvement:
-Implement exponential backoff using retry libraries.
+Current Status:
+Client factory utility implemented.
+
+Future Testing:
+Validate client creation with AWS services when credentials are available.
