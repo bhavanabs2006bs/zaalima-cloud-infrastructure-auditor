@@ -1,0 +1,13 @@
+EBS Scanner Testing Notes
+
+Test Result:
+AWS credentials not configured.
+
+Status:
+Scanner executed successfully and handled missing credentials.
+
+Current Limitation:
+Unable to retrieve EBS volume data without valid AWS credentials.
+
+Future Testing:
+Verify detection of unattached EBS volumes using a configured AWS account.
