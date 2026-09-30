@@ -1,0 +1,30 @@
+[
+  {
+    "resource_type": "ebs_volume",
+    "resource_id": "vol-0123456789abcdef0",
+    "region": "us-east-1",
+    "finding": "unattached",
+    "state": "available",
+    "size_gb": 50,
+    "volume_type": "gp3",
+    "encrypted": true,
+    "availability_zone": "us-east-1a",
+    "created_at": "2026-09-30T10:00:00+00:00",
+    "tags": [
+      {
+        "Key": "Environment",
+        "Value": "test"
+      }
+    ]
+  },
+  {
+    "resource_type": "elastic_ip",
+    "resource_id": "eipalloc-0123456789abcdef0",
+    "region": "us-east-1",
+    "finding": "unassociated",
+    "public_ip": "203.0.113.10",
+    "domain": "vpc",
+    "network_border_group": "us-east-1",
+    "tags": []
+  }
+]

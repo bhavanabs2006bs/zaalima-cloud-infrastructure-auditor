@@ -1,37 +1,94 @@
-import boto3
-from botocore.exceptions import NoCredentialsError, NoRegionError
+from __future__ import annotations
 
-def find_unattached_volumes():
+from datetime import datetime
+from typing import Any, Optional
+
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    NoCredentialsError,
+)
+
+from aws_client_factory import get_client
+
+
+def _iso(value: Any) -> Optional[str]:
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    return value
+
+
+def find_unattached_volumes(
+    ec2_client=None,
+    region_name: Optional[str] = None,
+) -> list[dict[str, Any]]:
+
+    ec2 = ec2_client or get_client(
+        "ec2",
+        region_name=region_name,
+    )
+
+    findings = []
+
     try:
-        ec2 = boto3.client("ec2", region_name="us-east-1")
+        paginator = ec2.get_paginator(
+            "describe_volumes"
+        )
 
-        response = ec2.describe_volumes()
+        for page in paginator.paginate():
 
-        unattached_volumes = []
+            for volume in page.get("Volumes", []):
 
-        for volume in response["Volumes"]:
-            if len(volume["Attachments"]) == 0:
-                unattached_volumes.append(volume["VolumeId"])
+                # Attached volumes are not findings
+                if volume.get("Attachments"):
+                    continue
 
-        return unattached_volumes
+                finding = {
+                    "resource_type": "ebs_volume",
+                    "resource_id": volume["VolumeId"],
+                    "region": (
+                        region_name
+                        or ec2.meta.region_name
+                    ),
+                    "finding": "unattached",
+                    "state": volume.get("State"),
+                    "size_gb": volume.get("Size"),
+                    "volume_type": volume.get("VolumeType"),
+                    "encrypted": volume.get(
+                        "Encrypted",
+                        False,
+                    ),
+                    "availability_zone": volume.get(
+                        "AvailabilityZone"
+                    ),
+                    "created_at": _iso(
+                        volume.get("CreateTime")
+                    ),
+                    "tags": volume.get(
+                        "Tags",
+                        [],
+                    ),
+                }
 
-    except NoRegionError:
-        print("AWS region not configured.")
+                findings.append(finding)
 
-    except NoCredentialsError:
-        print("AWS credentials not configured.")
+        return findings
 
-    except Exception as e:
-        print("Scanner failed:")
-        print(e)
+    except (
+        NoCredentialsError,
+        BotoCoreError,
+        ClientError,
+    ) as exc:
+
+        raise RuntimeError(
+            f"Unable to scan EBS volumes: {exc}"
+        ) from exc
+
 
 if __name__ == "__main__":
-    volumes = find_unattached_volumes()
 
-    if volumes is not None:
-        if volumes:
-            print("Unattached Volumes Found:")
-            for volume in volumes:
-                print(volume)
-        else:
-            print("No unattached volumes found.")
+    results = find_unattached_volumes()
+
+    for result in results:
+        print(result)
