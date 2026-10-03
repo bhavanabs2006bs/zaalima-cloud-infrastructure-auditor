@@ -54,3 +54,29 @@ def test_returns_only_unassociated_ips():
         findings[0]["finding"]
         == "unassociated"
     )
+
+
+def test_returns_empty_list_when_no_elastic_ips_exist():
+
+    client = boto3.client(
+        "ec2",
+        region_name="us-east-1",
+    )
+
+    stubber = Stubber(client)
+
+    stubber.add_response(
+        "describe_addresses",
+        {
+            "Addresses": []
+        },
+        {},
+    )
+
+    with stubber:
+
+        findings = find_unassociated_elastic_ips(
+            ec2_client=client
+        )
+
+    assert findings == []

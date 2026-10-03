@@ -26,5 +26,17 @@
     "domain": "vpc",
     "network_border_group": "us-east-1",
     "tags": []
+  },
+  {
+    "resource_type": "ec2_instance",
+    "resource_id": "i-0123456789abcdef0",
+    "region": "us-east-1",
+    "instance_type": "t3.medium",
+    "state": "running",
+    "launch_time": "2026-09-16T10:00:00+00:00",
+    "average_cpu_14_days": 3.2,
+    "finding": "underutilized",
+    "threshold": "<5%",
+    "lookback_days": 14
   }
 ]

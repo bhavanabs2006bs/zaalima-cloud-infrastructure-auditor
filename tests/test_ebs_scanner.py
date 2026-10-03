@@ -74,11 +74,37 @@ def test_returns_only_unattached_volumes():
     )
 
     assert (
-    findings[0]["finding"]
-    == "unattached"
+        findings[0]["finding"]
+        == "unattached"
     )
 
     assert (
-    findings[0]["size_gb"]
-    == 50
+        findings[0]["size_gb"]
+        == 50
     )
+
+
+def test_returns_empty_list_when_no_volumes_exist():
+
+    client = boto3.client(
+        "ec2",
+        region_name="us-east-1",
+    )
+
+    stubber = Stubber(client)
+
+    stubber.add_response(
+        "describe_volumes",
+        {
+            "Volumes": []
+        },
+        {},
+    )
+
+    with stubber:
+
+        findings = find_unattached_volumes(
+            ec2_client=client
+        )
+
+    assert findings == []
