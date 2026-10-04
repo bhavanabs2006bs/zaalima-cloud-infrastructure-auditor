@@ -44,3 +44,11 @@ Cloud & Scanning component and the Reporting
     "encrypted": true
   }
 ]
+## EC2 fields
+
+- instance_type
+- state
+- launch_time
+- average_cpu_14_days
+- threshold
+- lookback_days
