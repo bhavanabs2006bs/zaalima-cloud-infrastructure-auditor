@@ -1,3 +1,4 @@
+import pytest
 from auditor.config import load_config
 
 
@@ -24,3 +25,16 @@ def test_reporting_configuration():
 
     assert config["reporting"]["format"] == "console"
     assert config["reporting"]["enabled"] is True
+def test_load_config_missing_file():
+    """Verify a missing configuration file raises FileNotFoundError."""
+    with pytest.raises(FileNotFoundError):
+        load_config("missing_config.yaml")
+
+
+def test_load_config_invalid_yaml(tmp_path):
+    """Verify invalid YAML raises a parsing error."""
+    config_file = tmp_path / "invalid_config.yaml"
+    config_file.write_text("project: [invalid", encoding="utf-8")
+
+    with pytest.raises(Exception):
+        load_config(str(config_file))    
