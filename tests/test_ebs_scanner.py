@@ -31,3 +31,33 @@ def test_no_unattached_volumes():
     unattached_volumes = find_unattached_volumes()
 
     assert unattached_volumes == []
+from unittest.mock import patch
+from botocore.exceptions import NoCredentialsError, NoRegionError
+
+
+def test_ebs_scanner_handles_no_credentials(capsys):
+    """Verify EBS scanner handles missing AWS credentials."""
+    with patch(
+        "ebs_scanner.boto3.client",
+        side_effect=NoCredentialsError(),
+    ):
+        result = find_unattached_volumes()
+
+    captured = capsys.readouterr()
+
+    assert result is None
+    assert "AWS credentials not configured." in captured.out
+
+
+def test_ebs_scanner_handles_no_region(capsys):
+    """Verify EBS scanner handles missing AWS region."""
+    with patch(
+        "ebs_scanner.boto3.client",
+        side_effect=NoRegionError(),
+    ):
+        result = find_unattached_volumes()
+
+    captured = capsys.readouterr()
+
+    assert result is None
+    assert "AWS region not configured." in captured.out    
