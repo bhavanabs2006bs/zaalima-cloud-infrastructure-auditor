@@ -124,4 +124,36 @@ def test_ec2_scanner_handles_instance_without_tags():
     assert findings[0]["resource_id"] == "i-33333333333333333"
     assert findings[0]["instance_type"] == "t2.micro"
     assert findings[0]["state"] == "running"
+def test_ec2_scanner_handles_missing_state():
+    """Verify EC2 scanner handles an instance without State information."""
+    from unittest.mock import Mock
+    from ec2_scanner import find_ec2_instances
+
+    ec2 = Mock()
+    ec2.meta.region_name = "us-east-1"
+
+    ec2.get_paginator.return_value.paginate.return_value = [
+        {
+            "Reservations": [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-44444444444444444",
+                            "InstanceType": "t2.micro",
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    findings = find_ec2_instances(
+        ec2_client=ec2,
+        region_name="us-east-1",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["resource_id"] == "i-44444444444444444"
+    assert findings[0]["instance_type"] == "t2.micro"
+    assert findings[0]["state"] is None    
         
