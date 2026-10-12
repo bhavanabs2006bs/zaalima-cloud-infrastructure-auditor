@@ -131,3 +131,24 @@ def test_empty_raw_scan_produces_zero_report_totals():
         "elastic_ips": 0,
         "ec2_instances": 0,
     }
+def test_all_scanner_findings_combine_into_one_result():
+    from scan_results import build_scan_results, count_findings
+
+    ebs = [{"resource_id": "vol-001", "finding": "unattached"}]
+    eips = [{"resource_id": "eipalloc-001", "finding": "unassociated"}]
+    ec2 = [{"resource_id": "i-001", "finding": "underutilized"}]
+
+    results = build_scan_results(
+        ebs_findings=ebs,
+        eip_findings=eips,
+        ec2_findings=ec2,
+    )
+
+    assert results["ebs_volumes"] == ebs
+    assert results["elastic_ips"] == eips
+    assert results["ec2_instances"] == ec2
+    assert count_findings(results) == {
+        "ebs_volumes": 1,
+        "elastic_ips": 1,
+        "ec2_instances": 1,
+    }
