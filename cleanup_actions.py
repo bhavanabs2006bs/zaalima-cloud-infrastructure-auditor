@@ -1,4 +1,4 @@
-
+﻿
 from __future__ import annotations
 
 from typing import Optional
@@ -28,7 +28,7 @@ def _handle_cleanup_error(
     resource_id: str,
     exc: Exception,
 ) -> RuntimeError:
-    """Create a consistent, actionable cleanup error."""
+    """Create a safe cleanup error without exposing unexpected details."""
     if isinstance(exc, ClientError):
         error = exc.response.get("Error", {})
         error_code = error.get("Code", "UnknownAWSCode")
@@ -39,8 +39,10 @@ def _handle_cleanup_error(
         detail = f"{error_code}: {error_message}"
     elif isinstance(exc, NoCredentialsError):
         detail = "AWS credentials are missing or unavailable"
+    elif isinstance(exc, BotoCoreError):
+        detail = f"AWS SDK error ({type(exc).__name__})"
     else:
-        detail = str(exc) or "AWS request failed"
+        detail = f"unexpected error ({type(exc).__name__})"
 
     return RuntimeError(
         f"Unable to {operation} resource {resource_id}: {detail}"
@@ -67,7 +69,7 @@ def delete_ebs_volume(
             "status": "requested",
             "response": response,
         }
-    except (NoCredentialsError, BotoCoreError, ClientError) as exc:
+    except Exception as exc:
         raise _handle_cleanup_error(
             "delete EBS volume",
             volume_id,
@@ -97,7 +99,7 @@ def release_elastic_ip(
             "status": "requested",
             "response": response,
         }
-    except (NoCredentialsError, BotoCoreError, ClientError) as exc:
+    except Exception as exc:
         raise _handle_cleanup_error(
             "release Elastic IP",
             allocation_id,
@@ -127,7 +129,7 @@ def terminate_ec2_instance(
             "status": "requested",
             "response": response,
         }
-    except (NoCredentialsError, BotoCoreError, ClientError) as exc:
+    except Exception as exc:
         raise _handle_cleanup_error(
             "terminate EC2 instance",
             instance_id,
@@ -201,4 +203,5 @@ def test_ebs_deletion_error_includes_aws_error_code():
             "vol-test123",
             ec2_client=FailingEC2Client(),
         )
+
 
