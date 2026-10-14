@@ -257,5 +257,30 @@ def test_ec2_scanner_handles_missing_launch_time():
     assert findings[0]["instance_type"] == "t2.micro"
     assert findings[0]["state"] == "running"
     assert findings[0]["launch_time"] is None
+
+def test_ec2_scanner_handles_reservation_with_empty_instances():
+    """Verify EC2 scanner handles reservations with no instances."""
+    from unittest.mock import Mock
+    from ec2_scanner import find_ec2_instances
+
+    ec2 = Mock()
+    ec2.meta.region_name = "us-east-1"
+
+    ec2.get_paginator.return_value.paginate.return_value = [
+        {
+            "Reservations": [
+                {
+                    "Instances": []
+                }
+            ]
+        }
+    ]
+
+    findings = find_ec2_instances(
+        ec2_client=ec2,
+        region_name="us-east-1",
+    )
+
+    assert findings == []
         
         
