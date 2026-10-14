@@ -189,5 +189,38 @@ def test_ec2_scanner_handles_missing_instance_type():
     assert findings[0]["resource_id"] == "i-55555555555555555"
     assert findings[0]["instance_type"] is None
     assert findings[0]["state"] == "running"
+
+def test_ec2_scanner_handles_missing_instance_id():
+    """Verify EC2 scanner handles missing InstanceId information."""
+    from unittest.mock import Mock
+    from ec2_scanner import find_ec2_instances
+
+    ec2 = Mock()
+    ec2.meta.region_name = "us-east-1"
+
+    ec2.get_paginator.return_value.paginate.return_value = [
+        {
+            "Reservations": [
+                {
+                    "Instances": [
+                        {
+                            "InstanceType": "t2.micro",
+                            "State": {"Name": "running"},
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    findings = find_ec2_instances(
+        ec2_client=ec2,
+        region_name="us-east-1",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["resource_id"] is None
+    assert findings[0]["instance_type"] == "t2.micro"
+    assert findings[0]["state"] == "running"
         
         
