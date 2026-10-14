@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zaalima-cloud-infrastructure-auditor"
+version = "0.1.0"
+description = "CLI tool for auditing AWS infrastructure and identifying potentially wasteful resources"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.9.201",
+    "typer>=0.12",
+    "rich>=13.0",
+]
+
+[project.scripts]
+cloud-auditor = "main:app"
+
+[tool.setuptools]
+py-modules = [
+    "main",
+    "aws_client_factory",
+    "auth_spike",
+    "cleanup_actions",
+    "ebs_scanner",
+    "ec2_scanner",
+    "eip_scanner",
+    "scan_results",
+]

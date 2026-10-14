@@ -1,5 +1,4 @@
-﻿
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Optional
 
@@ -32,11 +31,7 @@ def _handle_cleanup_error(
     if isinstance(exc, ClientError):
         error = exc.response.get("Error", {})
         error_code = error.get("Code", "UnknownAWSCode")
-        error_message = error.get(
-            "Message",
-            "AWS rejected the request",
-        )
-        detail = f"{error_code}: {error_message}"
+        detail = f"AWS error ({error_code})"
     elif isinstance(exc, NoCredentialsError):
         detail = "AWS credentials are missing or unavailable"
     elif isinstance(exc, BotoCoreError):
@@ -53,10 +48,17 @@ def delete_ebs_volume(
     volume_id: str,
     ec2_client=None,
     region_name: Optional[str] = None,
+    *,
+    confirm: bool = False,
 ) -> dict:
-    """Request deletion of a specified EBS volume."""
+    """Delete an EBS volume only after explicit confirmation."""
     if not volume_id or not volume_id.strip():
         raise ValueError("volume_id must not be empty")
+
+    if confirm is not True:
+        raise ValueError(
+            "Explicit confirmation is required for destructive cleanup"
+        )
 
     ec2 = _get_ec2_client(ec2_client, region_name)
 
@@ -81,10 +83,17 @@ def release_elastic_ip(
     allocation_id: str,
     ec2_client=None,
     region_name: Optional[str] = None,
+    *,
+    confirm: bool = False,
 ) -> dict:
-    """Request release of a specified Elastic IP allocation."""
+    """Release an Elastic IP only after explicit confirmation."""
     if not allocation_id or not allocation_id.strip():
         raise ValueError("allocation_id must not be empty")
+
+    if confirm is not True:
+        raise ValueError(
+            "Explicit confirmation is required for destructive cleanup"
+        )
 
     ec2 = _get_ec2_client(ec2_client, region_name)
 
@@ -111,10 +120,17 @@ def terminate_ec2_instance(
     instance_id: str,
     ec2_client=None,
     region_name: Optional[str] = None,
+    *,
+    confirm: bool = False,
 ) -> dict:
-    """Request termination of a specified EC2 instance."""
+    """Terminate an EC2 instance only after explicit confirmation."""
     if not instance_id or not instance_id.strip():
         raise ValueError("instance_id must not be empty")
+
+    if confirm is not True:
+        raise ValueError(
+            "Explicit confirmation is required for destructive cleanup"
+        )
 
     ec2 = _get_ec2_client(ec2_client, region_name)
 
@@ -135,73 +151,3 @@ def terminate_ec2_instance(
             instance_id,
             exc,
         ) from exc
-    
-def test_elastic_ip_release_errors_include_aws_error_code():
-    class FailingEC2Client:
-        def release_address(self, **kwargs):
-            raise ClientError(
-                {
-                    "Error": {
-                        "Code": "DependencyViolation",
-                        "Message": "The address is still associated",
-                    }
-                },
-                "ReleaseAddress",
-            )
-
-    with pytest.raises(
-        RuntimeError,
-        match="DependencyViolation",
-    ):
-        release_elastic_ip(
-            "eipalloc-test123",
-            ec2_client=FailingEC2Client(),
-        )
-
-
-def test_ec2_termination_errors_include_resource_id():
-    class FailingEC2Client:
-        def terminate_instances(self, **kwargs):
-            raise ClientError(
-                {
-                    "Error": {
-                        "Code": "InvalidInstanceID.NotFound",
-                        "Message": "The instance does not exist",
-                    }
-                },
-                "TerminateInstances",
-            )
-
-    with pytest.raises(
-        RuntimeError,
-        match="i-test123",
-    ):
-        terminate_ec2_instance(
-            "i-test123",
-            ec2_client=FailingEC2Client(),
-        )
-
-
-def test_ebs_deletion_error_includes_aws_error_code():
-    class FailingEC2Client:
-        def delete_volume(self, **kwargs):
-            raise ClientError(
-                {
-                    "Error": {
-                        "Code": "VolumeInUse",
-                        "Message": "The volume is currently attached",
-                    }
-                },
-                "DeleteVolume",
-            )
-
-    with pytest.raises(
-        RuntimeError,
-        match="VolumeInUse",
-    ):
-        delete_ebs_volume(
-            "vol-test123",
-            ec2_client=FailingEC2Client(),
-        )
-
-

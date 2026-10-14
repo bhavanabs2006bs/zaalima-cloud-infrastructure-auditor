@@ -4,3 +4,10 @@ __pycache__/
 .venv/
 venv/
 .env
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# PyInstaller
+*.spec

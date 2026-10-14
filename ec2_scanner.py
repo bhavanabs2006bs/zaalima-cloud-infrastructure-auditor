@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 from typing import Any, Optional
 
 from botocore.exceptions import (
@@ -12,43 +13,49 @@ from botocore.exceptions import (
 from aws_client_factory import get_client
 
 
-# AWS allows up to 500 MetricDataQuery objects
-# in one GetMetricData request.
 MAX_QUERIES_PER_REQUEST = 500
+LOOKBACK_DAYS = 14
+CPU_THRESHOLD = 5.0
+METRIC_PERIOD_SECONDS = 86400
+MIN_DAILY_DATAPOINTS = 14
+
+
+def _safe_aws_error(exc: Exception) -> RuntimeError:
+    """Return a safe error message without exposing arbitrary exception text."""
+    if isinstance(exc, ClientError):
+        error = exc.response.get("Error", {})
+        detail = error.get("Code", "UnknownAWSCode")
+    elif isinstance(exc, NoCredentialsError):
+        detail = "AWS credentials are missing or unavailable"
+    elif isinstance(exc, BotoCoreError):
+        detail = f"AWS SDK error ({type(exc).__name__})"
+    else:
+        detail = f"unexpected error ({type(exc).__name__})"
+
+    return RuntimeError(f"EC2 scanning failed: {detail}")
 
 
 def find_ec2_instances(
     ec2_client=None,
     region_name: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-
-    ec2 = ec2_client or get_client(
-        "ec2",
-        region_name=region_name,
+    """Return EC2 instance metadata using paginated AWS results."""
+    ec2 = (
+        ec2_client
+        if ec2_client is not None
+        else get_client("ec2", region_name=region_name)
     )
-
     findings = []
 
     try:
-        paginator = ec2.get_paginator(
-            "describe_instances"
-        )
+        paginator = ec2.get_paginator("describe_instances")
 
         for page in paginator.paginate():
-
-            for reservation in page.get(
-                "Reservations",
-                [],
-            ):
-
-                for instance in reservation.get(
-                    "Instances",
-                    [],
-                ):
-
-                    instance_id = instance.get(
-                        "InstanceId"
-                    )
+            for reservation in page.get("Reservations", []):
+                for instance in reservation.get("Instances", []):
+                    instance_id = instance.get("InstanceId")
+                    if not instance_id:
+                        continue
 
                     findings.append(
                         {
@@ -58,29 +65,126 @@ def find_ec2_instances(
                                 region_name
                                 or ec2.meta.region_name
                             ),
-                            "instance_type": instance.get(
-                                "InstanceType"
-                            ),
-                            "state": instance.get(
-                                "State", {}
-                            ).get("Name"),
-                            "launch_time": instance.get(
-                                "LaunchTime"
-                            ),
+                            "instance_type": instance.get("InstanceType"),
+                            "state": instance.get("State", {}).get("Name"),
+                            "launch_time": instance.get("LaunchTime"),
                         }
                     )
 
         return findings
 
-    except (
-        NoCredentialsError,
-        BotoCoreError,
-        ClientError,
-    ) as exc:
+    except Exception as exc:
+        raise _safe_aws_error(exc) from exc
 
-        raise RuntimeError(
-            f"Unable to scan EC2 instances: {exc}"
-        ) from exc
+
+def _get_cpu_metric_summary(
+    instance_ids: list[str],
+    cloudwatch_client=None,
+    region_name: Optional[str] = None,
+) -> dict[str, dict[str, Optional[float] | int]]:
+    """Return CPU averages and datapoint counts for the last 14 days."""
+    if not instance_ids:
+        return {}
+
+    cloudwatch = (
+        cloudwatch_client
+        if cloudwatch_client is not None
+        else get_client("cloudwatch", region_name=region_name)
+    )
+
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(days=LOOKBACK_DAYS)
+    summaries: dict[str, dict[str, Optional[float] | int]] = {}
+
+    try:
+        for batch_start in range(
+            0, len(instance_ids), MAX_QUERIES_PER_REQUEST
+        ):
+            batch_ids = instance_ids[
+                batch_start:batch_start + MAX_QUERIES_PER_REQUEST
+            ]
+
+            queries = [
+                {
+                    "Id": f"cpu_{index}",
+                    "MetricStat": {
+                        "Metric": {
+                            "Namespace": "AWS/EC2",
+                            "MetricName": "CPUUtilization",
+                            "Dimensions": [
+                                {
+                                    "Name": "InstanceId",
+                                    "Value": instance_id,
+                                }
+                            ],
+                        },
+                        "Period": METRIC_PERIOD_SECONDS,
+                        "Stat": "Average",
+                    },
+                    "ReturnData": True,
+                }
+                for index, instance_id in enumerate(
+                    batch_ids, start=batch_start
+                )
+            ]
+
+            values_by_query: dict[str, list[float]] = {}
+            next_token = None
+
+            while True:
+                request = {
+                    "MetricDataQueries": queries,
+                    "StartTime": start_time,
+                    "EndTime": end_time,
+                    "ScanBy": "TimestampAscending",
+                }
+
+                if next_token:
+                    request["NextToken"] = next_token
+
+                response = cloudwatch.get_metric_data(**request)
+
+                for result in response.get("MetricDataResults", []):
+                    query_id = result.get("Id")
+                    if not query_id:
+                        continue
+
+                    values_by_query.setdefault(query_id, []).extend(
+                        result.get("Values", [])
+                    )
+
+                next_token = response.get("NextToken")
+                if not next_token:
+                    break
+
+            for index, instance_id in enumerate(
+                batch_ids, start=batch_start
+            ):
+                values = values_by_query.get(f"cpu_{index}", [])
+
+                valid_values = [
+                    float(value)
+                    for value in values
+                    if isinstance(value, (int, float))
+                    and isfinite(value)
+                    and 0 <= value <= 100
+                ]
+
+                average = (
+                    sum(valid_values) / len(valid_values)
+                    if valid_values
+                    else None
+                )
+
+                summaries[instance_id] = {
+                    "average": average,
+                    "datapoint_count": len(valid_values),
+                }
+
+        return summaries
+
+    except Exception as exc:
+        raise _safe_aws_error(exc) from exc
 
 
 def get_cpu_utilizations(
@@ -88,141 +192,17 @@ def get_cpu_utilizations(
     cloudwatch_client=None,
     region_name: Optional[str] = None,
 ) -> dict[str, Optional[float]]:
-
-    if not instance_ids:
-        return {}
-
-    cloudwatch = cloudwatch_client or get_client(
-        "cloudwatch",
+    """Return average CPU utilization, or None when no valid data exists."""
+    summaries = _get_cpu_metric_summary(
+        instance_ids,
+        cloudwatch_client=cloudwatch_client,
         region_name=region_name,
     )
 
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(days=14)
-
-    cpu_values = {}
-
-    try:
-
-        # Process EC2 instances in batches so that
-        # large accounts do not create one oversized request.
-        for batch_start in range(
-            0,
-            len(instance_ids),
-            MAX_QUERIES_PER_REQUEST,
-        ):
-
-            batch_instance_ids = instance_ids[
-                batch_start:
-                batch_start + MAX_QUERIES_PER_REQUEST
-            ]
-
-            queries = []
-
-            for index, instance_id in enumerate(
-                batch_instance_ids,
-                start=batch_start,
-            ):
-
-                queries.append(
-                    {
-                        "Id": f"cpu_{index}",
-                        "MetricStat": {
-                            "Metric": {
-                                "Namespace": "AWS/EC2",
-                                "MetricName": "CPUUtilization",
-                                "Dimensions": [
-                                    {
-                                        "Name": "InstanceId",
-                                        "Value": instance_id,
-                                    }
-                                ],
-                            },
-                            "Period": 86400,
-                            "Stat": "Average",
-                        },
-                        "ReturnData": True,
-                    }
-                )
-
-            next_token = None
-            batch_results = []
-
-            # CloudWatch may paginate metric results.
-            while True:
-
-                request = {
-                    "MetricDataQueries": queries,
-                    "StartTime": start_time,
-                    "EndTime": end_time,
-                    "ScanBy": "TimestampDescending",
-                }
-
-                if next_token:
-                    request["NextToken"] = next_token
-
-                response = cloudwatch.get_metric_data(
-                    **request
-                )
-
-                batch_results.extend(
-                    response.get(
-                        "MetricDataResults",
-                        [],
-                    )
-                )
-
-                next_token = response.get(
-                    "NextToken"
-                )
-
-                if not next_token:
-                    break
-
-            for index, instance_id in enumerate(
-                batch_instance_ids,
-                start=batch_start,
-            ):
-
-                result_id = f"cpu_{index}"
-
-                result = next(
-                    (
-                        item
-                        for item in batch_results
-                        if item.get("Id") == result_id
-                    ),
-                    None,
-                )
-
-                if not result:
-                    cpu_values[instance_id] = None
-                    continue
-
-                values = result.get(
-                    "Values",
-                    [],
-                )
-
-                if not values:
-                    cpu_values[instance_id] = None
-                    continue
-
-                cpu_values[instance_id] = (
-                    sum(values) / len(values)
-                )
-
-        return cpu_values
-
-    except (
-        NoCredentialsError,
-        BotoCoreError,
-        ClientError,
-    ) as exc:
-
-        raise RuntimeError(
-            f"Unable to read batch CPU metrics: {exc}"
-        ) from exc
+    return {
+        instance_id: summary["average"]
+        for instance_id, summary in summaries.items()
+    }
 
 
 def find_underutilized_instances(
@@ -230,52 +210,69 @@ def find_underutilized_instances(
     cloudwatch_client=None,
     region_name: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-
+    """Find running, sufficiently monitored instances averaging below 5% CPU."""
     instances = find_ec2_instances(
         ec2_client=ec2_client,
         region_name=region_name,
     )
 
-    if not instances:
-        return []
-
-    instance_ids = [
-        instance["resource_id"]
+    running_instances = [
+        instance
         for instance in instances
+        if instance.get("state") == "running"
     ]
 
-    cpu_values = get_cpu_utilizations(
-        instance_ids,
+    if not running_instances:
+        return []
+
+    # Exclude instances without a verifiable full 14-day history.
+    cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+    eligible_instances = []
+
+    for instance in running_instances:
+        launch_time = instance.get("launch_time")
+
+        if not isinstance(launch_time, datetime):
+            continue
+
+        if launch_time.tzinfo is None:
+            launch_time = launch_time.replace(tzinfo=timezone.utc)
+
+        if launch_time <= cutoff:
+            eligible_instances.append(instance)
+
+    if not eligible_instances:
+        return []
+
+    summaries = _get_cpu_metric_summary(
+        [instance["resource_id"] for instance in eligible_instances],
         cloudwatch_client=cloudwatch_client,
         region_name=region_name,
     )
 
     findings = []
 
-    for instance in instances:
-
+    for instance in eligible_instances:
         instance_id = instance["resource_id"]
+        summary = summaries.get(instance_id, {})
+        cpu = summary.get("average")
+        datapoint_count = summary.get("datapoint_count", 0)
 
-        cpu = cpu_values.get(instance_id)
-
-        # No CloudWatch data available
-        if cpu is None:
+        if datapoint_count < MIN_DAILY_DATAPOINTS:
             continue
 
-        # Underutilized threshold
-        if cpu < 5:
+        if cpu is None or cpu >= CPU_THRESHOLD:
+            continue
 
-            finding = {
+        findings.append(
+            {
                 **instance,
-                "average_cpu_14_days": round(
-                    cpu,
-                    2,
-                ),
+                "average_cpu_14_days": round(cpu, 2),
+                "cpu_datapoints_14_days": datapoint_count,
                 "finding": "underutilized",
                 "threshold": "<5%",
-                "lookback_days": 14,
+                "lookback_days": LOOKBACK_DAYS,
             }
-
-            findings.append(finding)
+        )
 
     return findings

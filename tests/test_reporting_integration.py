@@ -152,3 +152,37 @@ def test_all_scanner_findings_combine_into_one_result():
         "elastic_ips": 1,
         "ec2_instances": 1,
     }
+import pytest
+
+
+def test_build_scan_results_rejects_non_list_input():
+    with pytest.raises(TypeError, match="ebs_findings must be a list"):
+        build_scan_results(
+            ebs_findings="invalid",
+            eip_findings=[],
+            ec2_findings=[],
+        )
+
+
+def test_build_scan_results_rejects_non_dictionary_finding():
+    with pytest.raises(TypeError, match=r"ebs_findings\[0\] must be a dictionary"):
+        build_scan_results(
+            ebs_findings=["invalid"],
+            eip_findings=[],
+            ec2_findings=[],
+        )
+
+
+def test_count_findings_rejects_non_dictionary_input():
+    with pytest.raises(TypeError, match="scan_results must be a dictionary"):
+        count_findings([])
+
+
+def test_count_findings_rejects_non_list_category():
+    with pytest.raises(TypeError, match="ebs_volumes must be a list"):
+        count_findings({"ebs_volumes": "invalid"})
+
+
+def test_count_findings_rejects_non_dictionary_finding():
+    with pytest.raises(TypeError, match=r"elastic_ips\[0\] must be a dictionary"):
+        count_findings({"elastic_ips": ["invalid"]})

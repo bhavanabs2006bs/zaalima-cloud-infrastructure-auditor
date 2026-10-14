@@ -1,3 +1,5 @@
 boto3>=1.9.201
 pytest>=8.0
 moto[ec2,cloudwatch,sts]>=5.0
+typer>=0.12
+rich>=13.0
