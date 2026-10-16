@@ -1,6 +1,8 @@
 
 """Google Cloud Platform resource scanners."""
 
+from datetime import datetime, timedelta, timezone
+
 from cloud_auditor.scanners import Finding
 from cloud_auditor.utils import (
     estimate_ebs_monthly_cost,
@@ -29,6 +31,7 @@ def scan_unattached_gcp_disks(credentials, project):
                 continue
 
             size_gb = _gb_from_bytes_str(disk.size_gb)
+
             findings.append(
                 Finding(
                     provider="gcp",
@@ -92,11 +95,9 @@ def _get_avg_cpu_gcp(
     credentials,
     project,
     instance_id,
-    minutes=60,
+    lookback_days=14,
 ):
     """Return average CPU utilization percentage, or None."""
-    from datetime import datetime, timedelta, timezone
-
     from google.cloud import monitoring_v3
 
     client = monitoring_v3.MetricServiceClient(
@@ -104,7 +105,7 @@ def _get_avg_cpu_gcp(
     )
 
     end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(minutes=minutes)
+    start_time = end_time - timedelta(days=lookback_days)
 
     interval = monitoring_v3.TimeInterval(
         {
@@ -154,6 +155,7 @@ def scan_underutilized_gcp_instances(
     credentials,
     project,
     threshold=10.0,
+    lookback_days=14,
 ):
     """Find running GCP instances with low CPU utilization."""
     from google.cloud import compute_v1
@@ -170,6 +172,7 @@ def scan_underutilized_gcp_instances(
                 credentials=credentials,
                 project=project,
                 instance_id=str(instance.id),
+                lookback_days=lookback_days,
             )
 
             if avg_cpu is None or avg_cpu >= threshold:
@@ -181,7 +184,10 @@ def scan_underutilized_gcp_instances(
                     region=scope.split("/")[-1],
                     resource_type="gcp_instance",
                     resource_id=instance.name,
-                    reason=f"Average CPU utilization is low ({avg_cpu:.2f}%).",
+                    reason=(
+                        f"Average CPU utilization is low "
+                        f"({avg_cpu:.2f}%)."
+                    ),
                     estimated_monthly_savings=0.0,
                     cleanup_action=(
                         "Review utilization before resizing or stopping "

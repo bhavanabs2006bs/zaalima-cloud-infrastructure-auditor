@@ -1,3 +1,4 @@
+
 """Cloud Infrastructure Auditor & Cost Optimizer — CLI entry point."""
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from cloud_auditor.scanners.gcp_scanner import (
     scan_unattached_gcp_disks,
 )
 from cloud_auditor.utils import parse_region_list
+
 
 app = typer.Typer(
     name="cloud-auditor",
@@ -56,6 +58,7 @@ def main(
     )
 ) -> None:
     """Cloud Infrastructure Auditor & Cost Optimizer."""
+    pass
 
 
 @scan_app.command("aws")
@@ -102,7 +105,6 @@ def scan_aws(
     ),
 ) -> None:
     """Scan an AWS account for orphaned/underutilized/misconfigured resources."""
-
     resource_type = resource_type.lower()
 
     if resource_type not in {"all", "ebs", "eip", "ec2"}:
@@ -194,7 +196,6 @@ def scan_gcp(
     ),
 ) -> None:
     """Scan a GCP project for orphaned/underutilized/misconfigured resources."""
-
     try:
         gcp_ctx = get_gcp_context(project=project)
     except AuthError as exc:
@@ -209,14 +210,16 @@ def scan_gcp(
         if not skip_disks:
             findings.extend(
                 scan_unattached_gcp_disks(
-                    gcp_ctx.credentials, gcp_ctx.project
+                    gcp_ctx.credentials,
+                    gcp_ctx.project,
                 )
             )
 
         if not skip_addresses:
             findings.extend(
                 scan_idle_gcp_addresses(
-                    gcp_ctx.credentials, gcp_ctx.project
+                    gcp_ctx.credentials,
+                    gcp_ctx.project,
                 )
             )
 
@@ -226,6 +229,7 @@ def scan_gcp(
                     gcp_ctx.credentials,
                     gcp_ctx.project,
                     threshold=cpu_threshold,
+                    lookback_days=lookback_days,
                 )
             )
 
@@ -254,7 +258,6 @@ def cleanup(
 
     Execution requires typing the confirmation phrase interactively.
     """
-
     findings = load_findings_from_report(report)
 
     if not execute:
