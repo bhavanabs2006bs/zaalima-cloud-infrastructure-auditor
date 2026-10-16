@@ -225,8 +225,7 @@ def scan_gcp(
                 scan_underutilized_gcp_instances(
                     gcp_ctx.credentials,
                     gcp_ctx.project,
-                    lookback_days=lookback_days,
-                    cpu_threshold_pct=cpu_threshold,
+                    threshold=cpu_threshold,
                 )
             )
 
