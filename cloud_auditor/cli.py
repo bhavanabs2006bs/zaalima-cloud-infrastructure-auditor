@@ -281,6 +281,7 @@ def scan_gcp(
         console.print(f"\nReport exported to [bold]{path}[/bold]")
 
 
+
 @app.command("report")
 def report_command(
     report_file: str = typer.Argument(
@@ -297,8 +298,13 @@ def report_command(
         "--sort",
         help="Sort findings by savings or severity.",
     ),
+    export_path: Optional[str] = typer.Option(
+        None,
+        "--export",
+        help="Save the report to a file (.json or .csv).",
+    ),
 ) -> None:
-    """Display and sort findings from a saved JSON report."""
+    """Display, sort, or export findings from a saved JSON report."""
 
     output_format = output_format.lower()
     sort = sort.lower()
@@ -335,6 +341,11 @@ def report_command(
                     item.severity.lower(), 3
                 )
             )
+
+        if export_path:
+            path = export_report(findings, export_path)
+            console.print(f"Report exported to {path}")
+            return
 
         if output_format == "table":
             render_findings_table(
