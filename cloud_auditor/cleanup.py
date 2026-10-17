@@ -15,9 +15,22 @@ from rich.console import Console
 console = Console()
 
 
+
 def load_findings_from_report(path: str) -> List[dict]:
-    data = json.loads(Path(path).read_text())
-    return data.get("findings", data if isinstance(data, list) else [])
+    data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        findings = data.get("findings", [])
+        if isinstance(findings, list):
+            return findings
+
+    raise ValueError(
+        "Invalid report format: expected a list of findings "
+        "or an object containing a 'findings' list."
+    )
 
 
 def print_dry_run(findings: List[dict]) -> None:
