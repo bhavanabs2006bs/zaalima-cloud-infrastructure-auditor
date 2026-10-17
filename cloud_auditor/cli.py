@@ -58,13 +58,13 @@ def main(
     )
 ) -> None:
     """Cloud Infrastructure Auditor & Cost Optimizer."""
-    pass
 
 
 @scan_app.command("aws")
 def scan_aws(
     profile: Optional[str] = typer.Option(
-        None, help="Local AWS named profile to use."
+        None,
+        help="Local AWS named profile to use.",
     ),
     assume_role_arn: Optional[str] = typer.Option(
         None,
@@ -75,7 +75,7 @@ def scan_aws(
         None,
         "--regions",
         "--region",
-        help="Region or comma-separated regions to scan. Defaults to all enabled regions.",
+        help="Region or comma-separated regions to scan.",
     ),
     resource_type: str = typer.Option(
         "all",
@@ -83,33 +83,47 @@ def scan_aws(
         help="Resource type to scan: all, ebs, eip, or ec2.",
     ),
     lookback_days: int = typer.Option(
-        14, help="Days of CloudWatch history for EC2 CPU checks."
+        14,
+        help="Days of CloudWatch history for EC2 CPU checks.",
     ),
     cpu_threshold: float = typer.Option(
-        5.0, help="CPU%% below which an instance is flagged."
+        5.0,
+        help="CPU percentage below which an instance is flagged.",
     ),
     output: Optional[str] = typer.Option(
         None,
         "--output",
         "-o",
-        help="Export path (.json or .csv). Table always prints to screen.",
+        help="Export path (.json or .csv).",
     ),
     skip_ebs: bool = typer.Option(
-        False, help="Skip the unattached-EBS-volume scan."
+        False,
+        help="Skip the unattached-EBS-volume scan.",
     ),
     skip_eip: bool = typer.Option(
-        False, help="Skip the unassociated-Elastic-IP scan."
+        False,
+        help="Skip the unassociated-Elastic-IP scan.",
     ),
     skip_ec2: bool = typer.Option(
-        False, help="Skip the underutilized-EC2 scan."
+        False,
+        help="Skip the underutilized-EC2 scan.",
     ),
 ) -> None:
-    """Scan an AWS account for orphaned/underutilized/misconfigured resources."""
+    """Scan an AWS account for unused or underutilized resources."""
+
     resource_type = resource_type.lower()
 
     if resource_type not in {"all", "ebs", "eip", "ec2"}:
         raise typer.BadParameter(
             "Choose one of: all, ebs, eip, ec2."
+        )
+
+    if lookback_days < 1:
+        raise typer.BadParameter("lookback-days must be at least 1.")
+
+    if cpu_threshold < 0 or cpu_threshold > 100:
+        raise typer.BadParameter(
+            "cpu-threshold must be between 0 and 100."
         )
 
     try:
@@ -125,7 +139,8 @@ def scan_aws(
 
     console.print(
         f"Scanning AWS account [bold]{ctx.account_id}[/bold] across "
-        f"{len(target_regions)} region(s): {', '.join(target_regions)}\n"
+        f"{len(target_regions)} region(s): "
+        f"{', '.join(target_regions)}\n"
     )
 
     findings: List[Finding] = []
@@ -135,14 +150,18 @@ def scan_aws(
             if not skip_ebs and resource_type in {"all", "ebs"}:
                 findings.extend(
                     scan_unattached_ebs_volumes(
-                        ctx.session, region, ctx.account_id
+                        ctx.session,
+                        region,
+                        ctx.account_id,
                     )
                 )
 
             if not skip_eip and resource_type in {"all", "eip"}:
                 findings.extend(
                     scan_unassociated_eips(
-                        ctx.session, region, ctx.account_id
+                        ctx.session,
+                        region,
+                        ctx.account_id,
                     )
                 )
 
@@ -174,35 +193,51 @@ def scan_gcp(
         help="GCP project ID. Inferred from ADC if omitted.",
     ),
     lookback_days: int = typer.Option(
-        14, help="Days of Cloud Monitoring history for CPU checks."
+        14,
+        help="Days of Cloud Monitoring history for CPU checks.",
     ),
     cpu_threshold: float = typer.Option(
-        5.0, help="CPU%% below which an instance is flagged."
+        5.0,
+        help="CPU percentage below which an instance is flagged.",
     ),
     output: Optional[str] = typer.Option(
         None,
         "--output",
         "-o",
-        help="Export path (.json or .csv). Table always prints to screen.",
+        help="Export path (.json or .csv).",
     ),
     skip_disks: bool = typer.Option(
-        False, help="Skip the unattached-disk scan."
+        False,
+        help="Skip the unattached-disk scan.",
     ),
     skip_addresses: bool = typer.Option(
-        False, help="Skip the idle-static-IP scan."
+        False,
+        help="Skip the idle-static-IP scan.",
     ),
     skip_instances: bool = typer.Option(
-        False, help="Skip the underutilized-instance scan."
+        False,
+        help="Skip the underutilized-instance scan.",
     ),
 ) -> None:
-    """Scan a GCP project for orphaned/underutilized/misconfigured resources."""
+    """Scan a GCP project for unused or underutilized resources."""
+
+    if lookback_days < 1:
+        raise typer.BadParameter("lookback-days must be at least 1.")
+
+    if cpu_threshold < 0 or cpu_threshold > 100:
+        raise typer.BadParameter(
+            "cpu-threshold must be between 0 and 100."
+        )
+
     try:
         gcp_ctx = get_gcp_context(project=project)
     except AuthError as exc:
         console.print(f"[bold red]Auth error:[/bold red] {exc}")
         raise typer.Exit(code=1)
 
-    console.print(f"Scanning GCP project [bold]{gcp_ctx.project}[/bold]\n")
+    console.print(
+        f"Scanning GCP project [bold]{gcp_ctx.project}[/bold]\n"
+    )
 
     findings: List[Finding] = []
 
@@ -229,7 +264,6 @@ def scan_gcp(
                     gcp_ctx.credentials,
                     gcp_ctx.project,
                     threshold=cpu_threshold,
-                    lookback_days=lookback_days,
                 )
             )
 
@@ -243,22 +277,59 @@ def scan_gcp(
         console.print(f"\nReport exported to [bold]{path}[/bold]")
 
 
+@app.command("report")
+def report_command(
+    report_file: str = typer.Argument(
+        ...,
+        help="Path to a previously exported JSON report.",
+    ),
+) -> None:
+    """Display findings from a previously exported JSON report."""
+
+    try:
+        saved_findings = load_findings_from_report(report_file)
+        findings = [Finding(**item) for item in saved_findings]
+
+        render_findings_table(
+            findings,
+            title="Saved Audit Report",
+        )
+
+    except FileNotFoundError:
+        console.print(
+            f"[bold red]Error:[/bold red] "
+            f"Report file not found: {report_file}"
+        )
+        raise typer.Exit(code=1)
+
+    except (KeyError, TypeError, ValueError) as exc:
+        console.print(
+            f"[bold red]Error:[/bold red] Invalid report data: {exc}"
+        )
+        raise typer.Exit(code=1)
+
+
 @app.command("cleanup")
 def cleanup(
     report: str = typer.Argument(
-        ..., help="Path to a previously exported .json report."
+        ...,
+        help="Path to a previously exported JSON report.",
     ),
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Actually perform the cleanup (default is dry-run).",
+        help="Actually perform cleanup (default is dry-run).",
     ),
 ) -> None:
-    """Preview or execute cleanup actions from a saved report.
+    """Preview or execute cleanup actions from a saved report."""
 
-    Execution requires typing the confirmation phrase interactively.
-    """
-    findings = load_findings_from_report(report)
+    try:
+        findings = load_findings_from_report(report)
+    except FileNotFoundError:
+        console.print(
+            f"[bold red]Error:[/bold red] Report file not found: {report}"
+        )
+        raise typer.Exit(code=1)
 
     if not execute:
         print_dry_run(findings)
@@ -271,8 +342,8 @@ def cleanup(
     print_dry_run(findings)
 
     console.print(
-        f"\n[bold red]You are about to run {len(findings)} destructive "
-        f"command(s) against live cloud resources.[/bold red]"
+        f"\n[bold red]You are about to run {len(findings)} "
+        "destructive command(s) against live cloud resources.[/bold red]"
     )
 
     typed = typer.prompt(
@@ -280,7 +351,9 @@ def cleanup(
     )
 
     if typed != "DELETE":
-        console.print("[yellow]Cancelled. No changes were made.[/yellow]")
+        console.print(
+            "[yellow]Cancelled. No changes were made.[/yellow]"
+        )
         raise typer.Exit(code=0)
 
     execute_cleanup(findings, confirm_token=typed)
