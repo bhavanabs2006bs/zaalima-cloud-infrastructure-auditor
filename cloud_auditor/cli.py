@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
 import csv
 import io
 import json
 from dataclasses import asdict
+from typing import List, Optional
+
 import typer
 from rich.console import Console
 
@@ -281,8 +282,6 @@ def scan_gcp(
 
 
 @app.command("report")
-
-@app.command("report")
 def report_command(
     report_file: str = typer.Argument(
         ...,
@@ -341,6 +340,7 @@ def report_command(
             render_findings_table(
                 findings,
                 title="Saved Audit Report",
+                sort_by=sort,
             )
 
         elif output_format == "json":
@@ -396,6 +396,7 @@ def report_command(
             f"[bold red]Error:[/bold red] Invalid report data: {exc}"
         )
         raise typer.Exit(code=1)
+
 
 @app.command("cleanup")
 def cleanup(
