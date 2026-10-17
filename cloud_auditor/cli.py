@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 from typing import List, Optional
-
+import csv
+import io
+import json
+from dataclasses import asdict
 import typer
 from rich.console import Console
 
@@ -278,22 +281,108 @@ def scan_gcp(
 
 
 @app.command("report")
+
+@app.command("report")
 def report_command(
     report_file: str = typer.Argument(
         ...,
         help="Path to a previously exported JSON report.",
     ),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        help="Output format: table, json, or csv.",
+    ),
+    sort: str = typer.Option(
+        "savings",
+        "--sort",
+        help="Sort findings by savings or severity.",
+    ),
 ) -> None:
-    """Display findings from a previously exported JSON report."""
+    """Display and sort findings from a saved JSON report."""
+
+    output_format = output_format.lower()
+    sort = sort.lower()
+
+    if output_format not in {"table", "json", "csv"}:
+        raise typer.BadParameter(
+            "Choose one of: table, json, csv.",
+            param_hint="--format",
+        )
+
+    if sort not in {"savings", "severity"}:
+        raise typer.BadParameter(
+            "Choose one of: savings, severity.",
+            param_hint="--sort",
+        )
 
     try:
         saved_findings = load_findings_from_report(report_file)
         findings = [Finding(**item) for item in saved_findings]
 
-        render_findings_table(
-            findings,
-            title="Saved Audit Report",
-        )
+        if sort == "savings":
+            findings.sort(
+                key=lambda item: item.estimated_monthly_savings,
+                reverse=True,
+            )
+        else:
+            severity_order = {
+                "high": 0,
+                "medium": 1,
+                "low": 2,
+            }
+            findings.sort(
+                key=lambda item: severity_order.get(
+                    item.severity.lower(), 3
+                )
+            )
+
+        if output_format == "table":
+            render_findings_table(
+                findings,
+                title="Saved Audit Report",
+            )
+
+        elif output_format == "json":
+            console.print(
+                json.dumps(
+                    [asdict(item) for item in findings],
+                    indent=2,
+                    default=str,
+                ),
+                markup=False,
+            )
+
+        else:
+            buffer = io.StringIO()
+            fieldnames = [
+                "provider",
+                "region",
+                "resource_type",
+                "resource_id",
+                "reason",
+                "estimated_monthly_savings",
+                "severity",
+                "account_or_project",
+                "cleanup_action",
+                "metadata",
+            ]
+
+            writer = csv.DictWriter(
+                buffer,
+                fieldnames=fieldnames,
+            )
+            writer.writeheader()
+
+            for item in findings:
+                row = asdict(item)
+                row["metadata"] = json.dumps(
+                    row["metadata"],
+                    default=str,
+                )
+                writer.writerow(row)
+
+            console.print(buffer.getvalue(), markup=False, end="")
 
     except FileNotFoundError:
         console.print(
@@ -307,7 +396,6 @@ def report_command(
             f"[bold red]Error:[/bold red] Invalid report data: {exc}"
         )
         raise typer.Exit(code=1)
-
 
 @app.command("cleanup")
 def cleanup(
