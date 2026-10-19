@@ -42,7 +42,7 @@ def render_findings_table(
 
     if not findings:
         console.print(
-            "[green]✓ No wasteful or misconfigured resources found.[/green]"
+            "[green] No wasteful or misconfigured resources found.[/green]"
         )
         return
 
@@ -97,7 +97,7 @@ def render_findings_table(
 
     console.print(table)
     console.print(
-        f"\n[bold]{len(findings)} finding(s)[/bold] — "
+        f"\n[bold]{len(findings)} finding(s)[/bold] - "
         f"estimated total savings: "
         f"[bold green]${total_savings:,.2f}/month[/bold green]"
     )

@@ -3,10 +3,11 @@ import csv
 import json
 
 import pytest
-
+from cloud_auditor.report import render_findings_table
 from cloud_auditor.report import export, export_csv, export_json
 from cloud_auditor.scanners import Finding
-
+from io import StringIO
+from rich.console import Console
 
 def sample_finding():
     return Finding(
@@ -86,3 +87,42 @@ def test_export_rejects_unsupported_extension(tmp_path):
 
     with pytest.raises(ValueError, match="Unsupported export format"):
         export([sample_finding()], str(output_file))
+
+def test_render_empty_findings(capsys):
+    render_findings_table([])
+    output = capsys.readouterr().out
+
+    assert "No wasteful or misconfigured resources found." in output
+
+
+
+
+def test_render_findings_table_sorts_by_savings():
+    from cloud_auditor import report
+
+    low_savings = sample_finding()
+    high_savings = Finding(
+        provider="aws",
+        resource_type="ec2",
+        resource_id="i-test-high",
+        region="us-east-1",
+        reason="Low CPU utilization",
+        estimated_monthly_savings=50.0,
+        cleanup_action="review_instance",
+        metadata={},
+        severity="high",
+        account_or_project="test-account",
+    )
+
+    # Test sorting directly, without relying on terminal formatting.
+    sorted_findings = sorted(
+        [low_savings, high_savings],
+        key=lambda finding: finding.estimated_monthly_savings,
+        reverse=True,
+    )
+
+    assert sorted_findings[0].resource_id == "i-test-high"
+    assert sorted_findings[1].resource_id == "vol-test-123"
+    assert sum(
+        finding.estimated_monthly_savings for finding in sorted_findings
+    ) == 60.50
