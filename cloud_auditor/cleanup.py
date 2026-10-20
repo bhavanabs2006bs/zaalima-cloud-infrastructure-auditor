@@ -1,11 +1,12 @@
 
-"""Safe cleanup helpers with dry-run and explicit confirmation."""
+"""Safe cleanup helpers with dry-run, confirmation, and audit logging."""
 
 from __future__ import annotations
 
 import json
 import shlex
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -13,8 +14,11 @@ from rich.console import Console
 
 console = Console()
 
+AUDIT_LOG_PATH = Path("logs") / "cleanup_audit.jsonl"
+
 
 def load_findings_from_report(path: str) -> List[dict]:
+    """Load findings from a JSON report."""
     data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
     if isinstance(data, list):
@@ -34,6 +38,7 @@ def load_findings_from_report(path: str) -> List[dict]:
 
 
 def print_dry_run(findings: List[dict]) -> None:
+    """Display proposed cleanup actions without executing them."""
     if not findings:
         console.print("[green]Nothing to clean up.[/green]")
         return
@@ -55,15 +60,39 @@ def print_dry_run(findings: List[dict]) -> None:
         )
 
 
+def _write_audit_log(
+    finding: dict,
+    status: str,
+    command: str = "",
+    error: str = "",
+) -> None:
+    """Append one JSON Lines audit event."""
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "provider": finding.get("provider", "unknown"),
+        "resource_type": finding.get("resource_type", "unknown"),
+        "resource_id": finding.get("resource_id", "unknown"),
+        "cleanup_action": finding.get("cleanup_action", ""),
+        "command": command,
+        "status": status,
+        "error": error[:1000],
+    }
+
+    AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    with AUDIT_LOG_PATH.open("a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps(record) + "\n")
+
+
 def _parse_cleanup_command(action: str) -> list[str]:
-    """Validate and parse supported cloud CLI cleanup commands."""
+    """Validate and parse supported AWS CLI or gcloud commands."""
     if not isinstance(action, str) or not action.strip():
         raise ValueError("Cleanup action must be a non-empty string.")
 
     if "\n" in action or "\r" in action:
         raise ValueError("Multi-line cleanup actions are not allowed.")
 
-    # Allow comments/hints following the command, matching the old behavior.
+    # Remove an optional inline comment, preserving previous behavior.
     command_text = action.split("  #", 1)[0].strip()
 
     try:
@@ -76,24 +105,46 @@ def _parse_cleanup_command(action: str) -> list[str]:
 
     executable = Path(parts[0].strip('"')).name.lower()
 
-    # Only explicitly supported cloud CLI executables are allowed.
-    if executable not in {"aws", "aws.exe", "gcloud", "gcloud.cmd", "gcloud.exe"}:
+    allowed_executables = {
+        "aws",
+        "aws.exe",
+        "gcloud",
+        "gcloud.cmd",
+        "gcloud.exe",
+    }
+
+    if executable not in allowed_executables:
         raise ValueError(
-            "Unsupported cleanup command. Only AWS CLI and gcloud commands "
-            "are permitted."
+            "Unsupported cleanup command. Only AWS CLI and gcloud "
+            "commands are permitted."
         )
 
-    if any(part in {";", "&&", "||", "|", ">", "<"} for part in parts):
+    if any(
+        operator in part
+        for part in parts
+        for operator in (";", "&&", "||", "|", ">", "<")
+    ):
         raise ValueError("Shell operators are not allowed in cleanup actions.")
 
     return parts
 
 
 def execute_cleanup(findings: List[dict], confirm_token: str) -> None:
-    """Execute validated cleanup actions after explicit confirmation."""
+    """Execute validated commands after confirmation and audit each attempt."""
     if confirm_token != "DELETE":
+        for finding in findings:
+            try:
+                _write_audit_log(
+                    finding,
+                    status="rejected",
+                    error="Confirmation token was not exactly DELETE.",
+                )
+            except OSError as exc:
+                console.print(f"[red]Could not write audit log: {exc}[/red]")
+
         raise PermissionError(
-            "Refusing to execute cleanup: confirmation token must be exactly 'DELETE'."
+            "Refusing to execute cleanup: confirmation token must be exactly "
+            "'DELETE'."
         )
 
     if not findings:
@@ -109,9 +160,42 @@ def execute_cleanup(findings: List[dict], confirm_token: str) -> None:
 
     for finding in findings:
         try:
-            command = _parse_cleanup_command(finding.get("cleanup_action", ""))
-            console.print(f"  Running: {' '.join(command)}")
+            command = _parse_cleanup_command(
+                finding.get("cleanup_action", "")
+            )
+        except (ValueError, OSError) as exc:
+            try:
+                _write_audit_log(
+                    finding,
+                    status="rejected",
+                    error=str(exc),
+                )
+            except OSError as log_exc:
+                console.print(
+                    f"[red]Could not write audit log: {log_exc}[/red]"
+                )
 
+            console.print(f"  [red]rejected[/red]: {exc}")
+            failures += 1
+            continue
+
+        command_text = " ".join(command)
+
+        # Record the start before executing. If logging fails, skip execution.
+        try:
+            _write_audit_log(
+                finding,
+                status="started",
+                command=command_text,
+            )
+        except OSError as exc:
+            console.print(
+                f"  [red]Audit log error; action skipped: {exc}[/red]"
+            )
+            failures += 1
+            continue
+
+        try:
             result = subprocess.run(
                 command,
                 shell=False,
@@ -120,11 +204,39 @@ def execute_cleanup(findings: List[dict], confirm_token: str) -> None:
                 text=True,
             )
 
-            console.print(f"    [green]done[/green] {result.stdout.strip()}")
+            try:
+                _write_audit_log(
+                    finding,
+                    status="success",
+                    command=command_text,
+                )
+            except OSError as exc:
+                console.print(
+                    f"  [red]Could not record success: {exc}[/red]"
+                )
+
+            console.print(
+                f"  [green]done[/green]: "
+                f"{finding.get('resource_id', 'unknown')}"
+            )
             successes += 1
 
-        except (ValueError, subprocess.CalledProcessError, OSError) as exc:
-            console.print(f"    [red]failed[/red]: {exc}")
+        except (subprocess.CalledProcessError, OSError) as exc:
+            error = getattr(exc, "stderr", None) or str(exc)
+
+            try:
+                _write_audit_log(
+                    finding,
+                    status="failed",
+                    command=command_text,
+                    error=error,
+                )
+            except OSError as log_exc:
+                console.print(
+                    f"  [red]Could not record failure: {log_exc}[/red]"
+                )
+
+            console.print(f"  [red]failed[/red]: {error}")
             failures += 1
 
     console.print(
