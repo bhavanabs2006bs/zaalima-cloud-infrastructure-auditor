@@ -1,14 +1,23 @@
+
+"""Package configuration for Cloud Infrastructure Auditor."""
+
 from pathlib import Path
 
 from setuptools import find_packages, setup
 
-this_dir = Path(__file__).parent
-long_description = (this_dir / "README.md").read_text(encoding="utf-8")
+
+BASE_DIR = Path(__file__).resolve().parent
+README_FILE = BASE_DIR / "README.md"
+
+long_description = README_FILE.read_text(encoding="utf-8")
 
 setup(
     name="cloud-auditor",
     version="0.1.0",
-    description="Cloud Infrastructure Auditor & Cost Optimizer — a CLI for DevOps/FinOps teams.",
+    description=(
+        "Cloud Infrastructure Auditor and Cost Optimizer - "
+        "a CLI for DevOps and FinOps teams."
+    ),
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Zaalima Development",
@@ -31,6 +40,7 @@ setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
         "Intended Audience :: System Administrators",
         "Topic :: Utilities",
     ],
