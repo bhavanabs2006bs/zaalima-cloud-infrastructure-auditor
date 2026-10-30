@@ -268,6 +268,7 @@ def scan_gcp(
                     gcp_ctx.credentials,
                     gcp_ctx.project,
                     threshold=cpu_threshold,
+                    lookback_days=lookback_days,
                 )
             )
 
