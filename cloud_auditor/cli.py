@@ -1,5 +1,5 @@
 
-"""Cloud Infrastructure Auditor & Cost Optimizer — CLI entry point."""
+"""Configure the main command-line application."""
 
 from __future__ import annotations
 
@@ -46,7 +46,8 @@ console = Console()
 
 
 def _version_callback(value: bool) -> None:
-    if value:
+     """Display the installed package version and exit when requested."""
+     if value:
         console.print(f"cloud-auditor {__version__}")
         raise typer.Exit()
 
